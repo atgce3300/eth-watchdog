@@ -1,78 +1,130 @@
 # eth-watchdog
 
-It is a watchdog script to monitor your Ethernet link
+Network connectivity monitor and auto-recovery script for Android devices (Termux).
 
-while true; do
-  if ! ping -c 1 192.168.1.1 > /dev/null 2>&1; then
-    # No connectivity, try restarting the Ethernet service
-    svc ethernet disable && sleep 2 && svc ethernet enable
-  fi
-  sleep 30
-done
+## Overview
 
-How it works:
-Runs continuously in the background
-Every N seconds, it checks if the network is actually working (ping the gateway)
-If the check fails, it restarts the Ethernet service, which forces Android to re-run DHCP and recover
-Then it goes back to monitoring
+eth-watchdog monitors your network connection and automatically attempts to recover connectivity when the network becomes unreachable. Designed for non-rooted Android devices running Termux.
 
-For your situation specifically, since we know the link comes back up at the kernel level but Android gets stuck, the trigger could be:
-A ping check (internet actually unreachable)
-Watching cat /sys/class/net/eth0/operstate for unexpected state changes
-Monitoring carrier_changes to detect link flapping
+## Features
 
-Downside: It's a hack that papercuts the symptom rather than fixing the root cause. It also means your device is running a background script constantly.
+- **Automatic Network Monitoring**: Checks gateway connectivity every 30 seconds
+- **Multiple Recovery Methods**: Tries multiple approaches to restore network
+- **Logging**: Records all activities to log file
+- **Non-rooted Friendly**: Works without root access
+- **Wake Lock**: Keeps device awake during monitoring
 
-Here are the steps to set it up manually in Termux:
+## The Problem
 
-Create the script
+On Android devices, network connectivity can become stuck after the cable is unplugged and plugged back. The kernel detects the link, but Android doesn't recover properly. This script monitors and recovers from such situations.
 
+## Installation
+
+```bash
+# Copy script to Termux
 mkdir -p ~/scripts
-nano ~/scripts/eth-watchdog.sh
-
-
-Paste this in:
-#!/data/data/com.termux/files/usr/bin/bash
-# Watchdog: restarts ethernet if network is unreachable
-
-GATEWAY="192.168.1.1"
-CHECK_INTERVAL=30
-while true; do
-  if ! ping -c 1 -W 5 "$GATEWAY" > /dev/null 2>&1; then
-    echo "[$(date)] No connectivity, restarting ethernet..."
-    svc ethernet disable
-    sleep 2
-    svc ethernet enable
-  fi
-  sleep "$CHECK_INTERVAL"
-done
-
-
-Save and exit (Ctrl+X, then Y, then Enter).
-
-Make it executable
-
-bash
+cp eth-watchdog.sh ~/scripts/
 chmod +x ~/scripts/eth-watchdog.sh
+```
 
+## Configuration
 
-Run it in the background
+Edit the script to match your network:
 
+```bash
+GATEWAY="192.168.1.1"      # Your gateway IP
+CHECK_INTERVAL=30            # Check every 30 seconds
+MAX_RETRIES=3               # Maximum retry attempts
+LOGFILE="${HOME}/eth-watchdog.log"
+```
+
+## Usage
+
+### Start the watchdog
+
+```bash
+# Run in background
 nohup ~/scripts/eth-watchdog.sh > ~/scripts/eth-watchdog.log 2>&1 &
 
+# Or use termux-service
+termux-service -s ~/scripts/eth-watchdog.sh
+```
 
-Check it's running
+### Check if running
 
+```bash
 ps aux | grep eth-watchdog
+```
 
+### View logs
 
-To stop it:
-bash
-killall eth-watchdog.sh
-
-
-To see the log:
+```bash
 cat ~/scripts/eth-watchdog.log
 
+# Or watch in real-time
+tail -f ~/scripts/eth-watchdog.log
+```
 
-That's it. It just runs in the background and checks every 30 seconds. Swap 192.168.1.1 for your actual gateway IP if it's different.
+### Stop the watchdog
+
+```bash
+killall eth-watchdog.sh
+```
+
+## How It Works
+
+1. **Ping Check**: Every 30 seconds, pings the gateway
+2. **If Failed**:
+   - Try flushing and renewing IP via DHCP
+   - Open Android network settings (as workaround)
+   - Try toggling WiFi scanning
+3. **If Success**: Continue monitoring
+
+## Recovery Methods
+
+| Method | Description |
+|--------|-------------|
+| IP Flush | Down/up interface + DHCP renew |
+| Settings Intent | Open Android network settings |
+| WiFi Toggle | Enable/disable WiFi scanning |
+
+## Non-Rooted Limitations
+
+On non-rooted Android, direct network control is limited. This script uses workarounds:
+- Opens network settings as a recovery trigger
+- Attempts DHCP renewal via Termux
+- Uses WiFi scanning toggle when applicable
+
+## Troubleshooting
+
+### Script not running
+```bash
+# Check if started
+ps aux | grep eth-watchdog
+
+# Start manually
+~/scripts/eth-watchdog.sh
+```
+
+### No logs
+```bash
+# Check log file
+cat ~/scripts/eth-watchdog.log
+
+# Or use termux-logcat
+termux-logcat | grep eth-watchdog
+```
+
+### Gateway unreachable
+Change `GATEWAY` in script to your actual gateway IP:
+```bash
+GATEWAY="192.168.1.1"  # Change this
+```
+
+## Disclaimer
+
+This script is a workaround for network issues on Android. It monitors connectivity and attempts recovery, but may not fix all network problems. For persistent issues, check your device's network hardware and Android settings.
+
+## Author
+
+Created for Termux users experiencing network connectivity issues on Android devices.
