@@ -76,3 +76,4 @@ cat ~/scripts/eth-watchdog.log
 
 
 That's it. It just runs in the background and checks every 30 seconds. Swap 192.168.1.1 for your actual gateway IP if it's different.
+x
